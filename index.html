@@ -29,6 +29,7 @@ html, body, *, *::before, *::after {
   --grain-o:     0.07;
   --cur:         rgba(209,207,201,0.45);
   --cur-hover:   rgba(209,207,201,0.8);
+  --selection:   rgba(209,207,201,0.15);
 }
 
 [data-theme="light"] {
@@ -40,7 +41,10 @@ html, body, *, *::before, *::after {
   --grain-o:     0.13;
   --cur:         rgba(42,35,24,0.4);
   --cur-hover:   rgba(42,35,24,0.75);
+  --selection:   rgba(42,35,24,0.12);
 }
+
+::selection { background: var(--selection); }
 
 html {
   height: 100%;
@@ -55,186 +59,144 @@ body {
   font-family: 'Fraunces', Georgia, serif;
   -webkit-font-smoothing: antialiased;
   transition: background .45s var(--ease), color .45s var(--ease);
-  overflow-x: hidden;
 }
+
+#drawing-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+body.draw-mode { user-select: none; }
+body.draw-mode #drawing-canvas { pointer-events: all; }
+body.draw-mode textarea { pointer-events: none; }
 
 ::-webkit-scrollbar { width: 0; }
 
-/* grain layer 1 */
-body::before {
+body::before, body::after {
   content: '';
   position: fixed; inset: 0;
   pointer-events: none;
   z-index: 9000;
+  mix-blend-mode: multiply;
+  transition: opacity .45s;
+}
+body::before {
   opacity: var(--grain-o);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.68' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)'/%3E%3C/svg%3E");
   background-size: 220px 220px;
   animation: gShift 7s steps(1,end) infinite;
-  transition: opacity .45s;
-  mix-blend-mode: multiply;
 }
-
-/* grain layer 2 — extra texture for light theme */
 body::after {
-  content: '';
-  position: fixed; inset: 0;
-  pointer-events: none;
-  z-index: 9001;
   opacity: 0;
+  z-index: 9001;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='g2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23g2)'/%3E%3C/svg%3E");
   background-size: 160px 160px;
   animation: gShift2 5s steps(1,end) infinite;
-  transition: opacity .45s;
-  mix-blend-mode: multiply;
 }
 [data-theme="light"] body::after { opacity: 0.09; }
 
-@keyframes gShift {
-  0%  { background-position:   0px   0px; }
-  14% { background-position:  80px  50px; }
-  28% { background-position: 160px 110px; }
-  42% { background-position:  30px 180px; }
-  57% { background-position: 200px  70px; }
-  71% { background-position:  60px 200px; }
-  85% { background-position: 140px  30px; }
-}
-@keyframes gShift2 {
-  0%  { background-position:  10px  10px; }
-  20% { background-position:  90px  60px; }
-  40% { background-position:  40px 130px; }
-  60% { background-position: 120px  20px; }
-  80% { background-position:  70px 100px; }
-}
+@keyframes gShift { 0% { background-position: 0 0; } 14% { background-position: 80px 50px; } 28% { background-position: 160px 110px; } }
+@keyframes gShift2 { 0% { background-position: 10px 10px; } 20% { background-position: 90px 60px; } }
 
-/* crosshair — thicker */
-#cx-h, #cx-v {
-  position: fixed;
-  pointer-events: none;
-  z-index: 9999;
-  background: var(--cur);
-  transform: translate(-50%, -50%);
-  transition: background .45s var(--ease);
-}
-#cx-h { width: 16px; height: 1.5px; }
-#cx-v { width: 1.5px; height: 16px; }
-#cx-gap {
-  position: fixed;
-  width: 3px; height: 3px;
-  background: var(--bg);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 10000;
-  transform: translate(-50%, -50%);
-  transition: background .45s var(--ease);
-}
-body.cur-hover #cx-h,
-body.cur-hover #cx-v { background: var(--cur-hover); }
+#cx-h, #cx-v, #cx-gap { position: fixed; pointer-events: none; transform: translate(-50%, -50%); transition: background .45s var(--ease); }
+#cx-h { width: 16px; height: 1.5px; z-index: 9999; background: var(--cur); }
+#cx-v { width: 1.5px; height: 16px; z-index: 9999; background: var(--cur); }
+#cx-gap { width: 3px; height: 3px; background: var(--bg); border-radius: 50%; z-index: 10000; }
+body.cur-hover #cx-h, body.cur-hover #cx-v { background: var(--cur-hover); }
 
-/* theme button */
-#theme-btn {
-  position: fixed;
-  top: 22px; right: 26px;
-  z-index: 8000;
-  width: 30px; height: 30px;
-  background: none; border: none;
+.btn-container {
+  position: fixed; top: 22px; z-index: 8000;
+  display: flex; flex-direction: column; align-items: center;
+}
+#theme-wrap { right: 26px; }
+#draw-wrap { right: 66px; }
+
+.tooltip {
+  font-family: 'Manrope', sans-serif;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   color: var(--ui);
-  display: flex; align-items: center; justify-content: center;
-  transition: color .2s;
-  padding: 0;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
 }
-#theme-btn:hover { color: var(--ui-hover); }
-#theme-btn svg { width: 16px; height: 16px; }
-.icon-moon { display: block; }
-.icon-sun  { display: none; }
-[data-theme="light"] .icon-moon { display: none; }
-[data-theme="light"] .icon-sun  { display: block; }
+.btn-container:hover .tooltip { opacity: 1; }
 
-/* editor */
+#theme-btn, #draw-btn {
+  width: 30px; height: 30px; background: none; border: none;
+  color: var(--ui); display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s; padding: 0;
+}
+#draw-btn.active { color: var(--text); }
+
+#undo-btn {
+  position: fixed; bottom: 22px; right: 26px; z-index: 8000;
+  width: 30px; height: 30px; background: none; border: none;
+  color: var(--ui); display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s;
+}
+
+#theme-btn svg, #draw-btn svg, #undo-btn svg { width: 16px; height: 16px; }
+.icon-sun { display: none; }
+[data-theme="light"] .icon-moon { display: none; }
+[data-theme="light"] .icon-sun { display: block; }
+
 #editor-wrap {
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  padding: 80px 32px;
+  min-height: 100vh; display: flex; justify-content: center; padding: 80px 32px;
 }
 
 textarea {
-  width: 100%;
-  max-width: 680px;
-  min-height: calc(100vh - 160px);
-  background: transparent;
-  border: none;
-  outline: none;
-  resize: none;
-  overflow: hidden;
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: clamp(17px, 2.2vw, 20px);
-  font-weight: 400;
-  line-height: 1.9;
-  letter-spacing: .01em;
-  color: var(--text);
-  caret-color: var(--text);
-  transition: color .45s var(--ease);
-  -webkit-font-smoothing: antialiased;
-  opacity: 0;
-  animation: edIn .7s .1s var(--ease) forwards;
+  width: 100%; max-width: 680px; min-height: calc(100vh - 160px);
+  background: transparent; border: none; outline: none; resize: none; overflow: hidden;
+  font-family: 'Fraunces', Georgia, serif; font-size: clamp(17px, 2.2vw, 20px);
+  font-weight: 400; line-height: 1.2; letter-spacing: .01em;
+  color: var(--text); caret-color: var(--text);
+  transition: color .45s var(--ease); opacity: 0;
+  animation: edIn .7s .1s var(--ease) forwards; position: relative; z-index: 10;
 }
-@keyframes edIn {
-  to { opacity: 1; }
-}
-textarea::placeholder {
-  font-style: italic;
-  color: var(--placeholder);
-}
-textarea::-webkit-scrollbar { display: none; }
+@keyframes edIn { to { opacity: 1; } }
 
-/* word count */
 #wc {
-  position: fixed;
-  bottom: 24px; left: 50%;
-  transform: translateX(-50%);
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  font-weight: 300;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--ui);
-  transition: color .45s, opacity .3s;
-  opacity: 0;
-  user-select: none;
-  z-index: 100;
-  pointer-events: none;
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  font-family: 'DM Mono', monospace; font-size: 10px;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--ui);
+  opacity: 0; z-index: 100; pointer-events: none;
 }
 #wc.show { opacity: 1; }
 
 @media (max-width: 600px) {
-  #editor-wrap { padding: 70px 22px; }
-  textarea { font-size: 17px; }
-  #theme-btn { top: 18px; right: 18px; }
+  #theme-wrap { top: 18px; right: 18px; }
+  #draw-wrap { top: 18px; right: 54px; }
+  .tooltip { display: none; }
 }
 </style>
 </head>
-<body>
+<body oncontextmenu="return false;">
+
+<canvas id="drawing-canvas"></canvas>
 
 <div id="cx-h"></div>
 <div id="cx-v"></div>
 <div id="cx-gap"></div>
 
-<button id="theme-btn" aria-label="Toggle theme">
-  <svg class="icon-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-    <path d="M13.5 10.5A6 6 0 0 1 5.5 2.5a6 6 0 1 0 8 8z"/>
-  </svg>
-  <svg class="icon-sun" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-    <circle cx="8" cy="8" r="2.8"/>
-    <line x1="8" y1="1"    x2="8" y2="2.8"/>
-    <line x1="8" y1="13.2" x2="8" y2="15"/>
-    <line x1="1"    y1="8" x2="2.8" y2="8"/>
-    <line x1="13.2" y1="8" x2="15"  y2="8"/>
-    <line x1="3.1"  y1="3.1"  x2="4.4"  y2="4.4"/>
-    <line x1="11.6" y1="11.6" x2="12.9" y2="12.9"/>
-    <line x1="12.9" y1="3.1"  x2="11.6" y2="4.4"/>
-    <line x1="4.4"  y1="11.6" x2="3.1"  y2="12.9"/>
-  </svg>
-</button>
+<div class="btn-container" id="draw-wrap">
+  <button id="draw-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14 4L6 12L2 14L4 10L12 2Z"/></svg></button>
+  <div class="tooltip">⌥D</div>
+</div>
+
+<div class="btn-container" id="theme-wrap">
+  <button id="theme-btn">
+    <svg class="icon-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M13.5 10.5A6 6 0 0 1 5.5 2.5a6 6 0 1 0 8 8z"/></svg>
+    <svg class="icon-sun" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="2.8"/><line x1="8" y1="1" x2="8" y2="2.8"/><line x1="8" y1="13.2" x2="8" y2="15"/><line x1="1" y1="8" x2="2.8" y2="8"/><line x1="13.2" y1="8" x2="15" y2="8"/><line x1="3.1" y1="3.1" x2="4.4" y2="4.4"/><line x1="11.6" y1="11.6" x2="12.9" y2="12.9"/><line x1="12.9" y1="3.1" x2="11.6" y2="4.4"/><line x1="4.4" y1="11.6" x2="3.1" y2="12.9"/></svg>
+  </button>
+  <div class="tooltip">⌥T</div>
+</div>
+
+<button id="undo-btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7H11C12.6569 7 14 8.34315 14 10V10C14 11.6569 12.6569 13 11 13H10"/><path d="M6 4L3 7L6 10"/></svg></button>
 
 <div id="editor-wrap">
   <textarea id="ed" placeholder="Start writing…" spellcheck="false" autocomplete="off"></textarea>
@@ -244,41 +206,107 @@ textarea::-webkit-scrollbar { display: none; }
 
 <script>
 (function () {
-  var html = document.documentElement;
-  var body = document.body;
-  var ed   = document.getElementById('ed');
-  var btn  = document.getElementById('theme-btn');
-  var wc   = document.getElementById('wc');
-  var cxH  = document.getElementById('cx-h');
-  var cxV  = document.getElementById('cx-v');
-  var cxG  = document.getElementById('cx-gap');
+  var html = document.documentElement, body = document.body, ed = document.getElementById('ed');
+  var btn = document.getElementById('theme-btn'), dBtn = document.getElementById('draw-btn'), uBtn = document.getElementById('undo-btn');
+  var wc = document.getElementById('wc'), cxH = document.getElementById('cx-h'), cxV = document.getElementById('cx-v'), cxG = document.getElementById('cx-gap');
+  var canvas = document.getElementById('drawing-canvas'), ctx = canvas.getContext('2d');
 
-  /* cursor */
+  let drawing = false, history = [], currentStroke = null;
+
+  function saveDrawing() { localStorage.setItem('notes-drawing', JSON.stringify(history)); }
+
+  function initCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = Math.max(body.scrollHeight, window.innerHeight) * dpr;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = Math.max(body.scrollHeight, window.innerHeight) + 'px';
+    ctx.scale(dpr, dpr);
+    redraw();
+  }
+
+  const ro = new ResizeObserver(() => initCanvas());
+  ro.observe(body);
+  window.addEventListener('resize', initCanvas);
+
+  function redraw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const textColor = getComputedStyle(html).getPropertyValue('--text').trim();
+    history.forEach(stroke => {
+      if (!stroke.pts || !stroke.pts.length) return;
+      ctx.beginPath();
+      ctx.globalCompositeOperation = stroke.eraser ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = stroke.eraser ? 'rgba(0,0,0,1)' : textColor;
+      ctx.lineWidth = stroke.eraser ? 40 : 2;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.moveTo(stroke.pts[0].x, stroke.pts[0].y);
+      stroke.pts.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+    });
+  }
+
   document.addEventListener('mousemove', function (e) {
-    var x = e.clientX, y = e.clientY;
+    var x = e.clientX, y = e.clientY, scrollY = window.scrollY;
     cxH.style.left = x+'px'; cxH.style.top = y+'px';
     cxV.style.left = x+'px'; cxV.style.top = y+'px';
     cxG.style.left = x+'px'; cxG.style.top = y+'px';
-  });
-  btn.addEventListener('mouseenter', function () { body.classList.add('cur-hover'); });
-  btn.addEventListener('mouseleave', function () { body.classList.remove('cur-hover'); });
 
-  /* theme */
+    if (drawing) {
+      currentStroke.pts.push({x: x, y: y + scrollY});
+      ctx.globalCompositeOperation = currentStroke.eraser ? 'destination-out' : 'source-over';
+      ctx.lineWidth = currentStroke.eraser ? 40 : 2;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = currentStroke.eraser ? 'rgba(0,0,0,1)' : getComputedStyle(html).getPropertyValue('--text');
+      ctx.lineTo(x, y + scrollY);
+      ctx.stroke();
+    }
+  });
+
+  canvas.addEventListener('mousedown', function(e) {
+    drawing = true;
+    var scrollY = window.scrollY;
+    currentStroke = { pts: [{x: e.clientX, y: e.clientY + scrollY}], eraser: e.button === 2 };
+    ctx.beginPath();
+    ctx.moveTo(e.clientX, e.clientY + scrollY);
+  });
+
+  window.addEventListener('mouseup', function() {
+    if (drawing) { history.push(currentStroke); saveDrawing(); drawing = false; }
+  });
+
+  function toggleDraw() {
+    body.classList.toggle('draw-mode');
+    dBtn.classList.toggle('active');
+    if (!body.classList.contains('draw-mode')) ed.focus();
+  }
+
   function toggleTheme() {
     var t = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', t);
     localStorage.setItem('notes-theme', t);
+    setTimeout(redraw, 50);
   }
-  btn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    toggleTheme();
-  });
-  document.addEventListener('click', function (e) {
-    if (e.target === ed) return;
-    toggleTheme();
+
+  window.addEventListener('keydown', function(e) {
+    // ⌥ + D
+    if (e.altKey && e.code === 'KeyD') { e.preventDefault(); toggleDraw(); }
+    // ⌥ + T
+    if (e.altKey && e.code === 'KeyT') { e.preventDefault(); toggleTheme(); }
+    // Cmd/Ctrl + Z
+    if ((e.metaKey || e.ctrlKey) && e.code === 'KeyZ' && body.classList.contains('draw-mode')) {
+      e.preventDefault(); history.pop(); redraw(); saveDrawing();
+    }
   });
 
-  /* editor & autosave */
+  dBtn.addEventListener('click', toggleDraw);
+  btn.addEventListener('click', (e) => { e.stopPropagation(); toggleTheme(); });
+  uBtn.addEventListener('click', () => { history.pop(); redraw(); saveDrawing(); });
+
+  [btn, dBtn, uBtn].forEach(el => {
+    el.addEventListener('mouseenter', () => body.classList.add('cur-hover'));
+    el.addEventListener('mouseleave', () => body.classList.remove('cur-hover'));
+  });
+
   function updateUI() {
     var words = ed.value.trim() ? ed.value.trim().split(/\s+/).length : 0;
     wc.textContent = words + (words === 1 ? ' word' : ' words');
@@ -287,26 +315,18 @@ textarea::-webkit-scrollbar { display: none; }
     ed.style.height = ed.scrollHeight + 'px';
   }
 
-  ed.addEventListener('input', function () {
+  ed.addEventListener('input', () => { updateUI(); localStorage.setItem('notes-content', ed.value); });
+
+  window.addEventListener('load', () => {
+    var sc = localStorage.getItem('notes-content');
+    if (sc !== null) ed.value = sc;
+    var st = localStorage.getItem('notes-theme');
+    if (st) html.setAttribute('data-theme', st);
+    var sd = localStorage.getItem('notes-drawing');
+    if (sd) history = JSON.parse(sd);
     updateUI();
-    localStorage.setItem('notes-content', ed.value);
-  });
-
-  window.addEventListener('load', function () {
-    // Load saved content
-    var savedContent = localStorage.getItem('notes-content');
-    if (savedContent !== null) {
-      ed.value = savedContent;
-    }
-
-    // Load saved theme
-    var savedTheme = localStorage.getItem('notes-theme');
-    if (savedTheme) {
-      html.setAttribute('data-theme', savedTheme);
-    }
-
-    updateUI();
-    setTimeout(function () { ed.focus(); }, 80);
+    initCanvas();
+    setTimeout(() => { if(!body.classList.contains('draw-mode')) ed.focus(); }, 80);
   });
 }());
 </script>
