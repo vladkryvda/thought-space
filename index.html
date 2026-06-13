@@ -202,15 +202,29 @@ textarea {
 
   let drawing = false, history = [], currentStroke = null;
   let clickTimeout = null;
+  let lastX = 0, lastY = 0;
 
   function saveDrawing() { localStorage.setItem('notes-drawing', JSON.stringify(history)); }
 
   function initCanvas() {
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = window.innerWidth * dpr;
-    canvas.height = Math.max(body.scrollHeight, window.innerHeight) * dpr;
-    canvas.style.width = window.innerWidth + 'px';
-    canvas.style.height = Math.max(body.scrollHeight, window.innerHeight) + 'px';
+    let dpr = window.devicePixelRatio || 1;
+    const docHeight = Math.max(body.scrollHeight, window.innerHeight);
+    const docWidth = window.innerWidth;
+    
+    // Cap overall physical canvas resolution to 4096px width/height 
+    // to prevent memory thrashing and slow render loops
+    if (docHeight * dpr > 4096) {
+      dpr = Math.min(dpr, 4096 / docHeight);
+    }
+    if (docWidth * dpr > 4096) {
+      dpr = Math.min(dpr, 4096 / docWidth);
+    }
+    dpr = Math.max(dpr, 1);
+
+    canvas.width = docWidth * dpr;
+    canvas.height = docHeight * dpr;
+    canvas.style.width = docWidth + 'px';
+    canvas.style.height = docHeight + 'px';
     ctx.scale(dpr, dpr);
     redraw();
   }
@@ -220,16 +234,26 @@ textarea {
   function redraw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const textColor = getComputedStyle(html).getPropertyValue('--text').trim();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    
     history.forEach(stroke => {
       if (!stroke.pts || !stroke.pts.length) return;
       ctx.beginPath();
       ctx.globalCompositeOperation = stroke.eraser ? 'destination-out' : 'source-over';
       ctx.strokeStyle = stroke.eraser ? 'rgba(0,0,0,1)' : textColor;
       ctx.lineWidth = stroke.eraser ? 40 : 2;
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      
       ctx.moveTo(stroke.pts[0].x, stroke.pts[0].y);
-      stroke.pts.forEach(p => ctx.lineTo(p.x, p.y));
-      ctx.stroke();
+      if (stroke.pts.length === 1) {
+        ctx.fillStyle = stroke.eraser ? 'rgba(0,0,0,1)' : textColor;
+        ctx.arc(stroke.pts[0].x, stroke.pts[0].y, ctx.lineWidth / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        for (let i = 1; i < stroke.pts.length; i++) {
+          ctx.lineTo(stroke.pts[i].x, stroke.pts[i].y);
+        }
+        ctx.stroke();
+      }
     });
   }
 
@@ -242,13 +266,26 @@ textarea {
     cxG.style.transform = translateStr;
 
     if (drawing) {
-      currentStroke.pts.push({x: x, y: y + scrollY});
-      ctx.globalCompositeOperation = currentStroke.eraser ? 'destination-out' : 'source-over';
-      ctx.lineWidth = currentStroke.eraser ? 40 : 2;
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = currentStroke.eraser ? 'rgba(0,0,0,1)' : getComputedStyle(html).getPropertyValue('--text');
-      ctx.lineTo(x, y + scrollY);
-      ctx.stroke();
+      var targetY = y + scrollY;
+      var dx = x - lastX;
+      var dy = targetY - lastY;
+      
+      // Avoid tracking tiny jitter movements to keep vector path data lightweight
+      if (dx * dx + dy * dy > 4) {
+        ctx.beginPath();
+        ctx.globalCompositeOperation = currentStroke.eraser ? 'destination-out' : 'source-over';
+        ctx.lineWidth = currentStroke.eraser ? 40 : 2;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = currentStroke.eraser ? 'rgba(0,0,0,1)' : getComputedStyle(html).getPropertyValue('--text');
+        
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, targetY);
+        ctx.stroke();
+        
+        lastX = x;
+        lastY = targetY;
+        currentStroke.pts.push({x: x, y: targetY});
+      }
     }
   });
 
@@ -257,9 +294,19 @@ textarea {
     
     drawing = true;
     var scrollY = window.scrollY;
-    currentStroke = { pts: [{x: e.clientX, y: e.clientY + scrollY}], eraser: e.button === 2 };
+    lastX = e.clientX;
+    lastY = e.clientY + scrollY;
+    
+    currentStroke = { pts: [{x: lastX, y: lastY}], eraser: e.button === 2 };
+    
+    // Draw an initial point instantly upon press
     ctx.beginPath();
-    ctx.moveTo(e.clientX, e.clientY + scrollY);
+    ctx.globalCompositeOperation = currentStroke.eraser ? 'destination-out' : 'source-over';
+    ctx.lineWidth = currentStroke.eraser ? 40 : 2;
+    ctx.lineCap = 'round';
+    ctx.fillStyle = currentStroke.eraser ? 'rgba(0,0,0,1)' : getComputedStyle(html).getPropertyValue('--text');
+    ctx.arc(lastX, lastY, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.fill();
   });
 
   window.addEventListener('mouseup', function() {
@@ -273,7 +320,7 @@ textarea {
       ed.focus();
     } else {
       ed.blur();
-      initCanvas(); // Оновлюємо canvas під поточну висоту сторінки перед малюванням
+      initCanvas();
     }
   }
 
