@@ -96,7 +96,14 @@ body::after {
 @keyframes gShift { 0% { background-position: 0 0; } 14% { background-position: 80px 50px; } 28% { background-position: 160px 110px; } }
 @keyframes gShift2 { 0% { background-position: 10px 10px; } 20% { background-position: 90px 60px; } }
 
-#cx-h, #cx-v, #cx-gap { position: fixed; pointer-events: none; transform: translate(-50%, -50%); transition: background .45s var(--ease); }
+#cx-h, #cx-v, #cx-gap { 
+  position: fixed; 
+  top: 0; 
+  left: 0; 
+  pointer-events: none; 
+  will-change: transform; 
+  transition: background .45s var(--ease); 
+}
 #cx-h { width: 16px; height: 1.5px; z-index: 9999; background: var(--cur); }
 #cx-v { width: 1.5px; height: 16px; z-index: 9999; background: var(--cur); }
 #cx-gap { width: 3px; height: 3px; background: var(--bg); border-radius: 50%; z-index: 10000; }
@@ -208,8 +215,6 @@ textarea {
     redraw();
   }
 
-  const ro = new ResizeObserver(() => initCanvas());
-  ro.observe(body);
   window.addEventListener('resize', initCanvas);
 
   function redraw() {
@@ -230,9 +235,11 @@ textarea {
 
   document.addEventListener('mousemove', function (e) {
     var x = e.clientX, y = e.clientY, scrollY = window.scrollY;
-    cxH.style.left = x+'px'; cxH.style.top = y+'px';
-    cxV.style.left = x+'px'; cxV.style.top = y+'px';
-    cxG.style.left = x+'px'; cxG.style.top = y+'px';
+    
+    var translateStr = 'translate3d(' + x + 'px, ' + y + 'px, 0) translate(-50%, -50%)';
+    cxH.style.transform = translateStr;
+    cxV.style.transform = translateStr;
+    cxG.style.transform = translateStr;
 
     if (drawing) {
       currentStroke.pts.push({x: x, y: y + scrollY});
@@ -246,8 +253,6 @@ textarea {
   });
 
   canvas.addEventListener('mousedown', function(e) {
-    // В режимі DBL click права кнопка не повинна починати малювати, 
-    // поки ми не перейдемо в режим пензлика
     if (!body.classList.contains('draw-mode') && e.button === 2) return;
     
     drawing = true;
@@ -264,8 +269,12 @@ textarea {
   function toggleDraw() {
     body.classList.toggle('draw-mode');
     dBtn.classList.toggle('active');
-    if (!body.classList.contains('draw-mode')) ed.focus();
-    else ed.blur();
+    if (!body.classList.contains('draw-mode')) {
+      ed.focus();
+    } else {
+      ed.blur();
+      initCanvas(); // Оновлюємо canvas під поточну висоту сторінки перед малюванням
+    }
   }
 
   function toggleTheme() {
@@ -275,11 +284,10 @@ textarea {
     setTimeout(redraw, 50);
   }
 
-  // ОБРОБКА КЛІКІВ
   window.addEventListener('mousedown', function(e) {
     if (e.target.closest('button') || e.target === ed) return;
 
-    if (e.button === 2) { // Права кнопка
+    if (e.button === 2) { 
       if (e.detail === 1) {
         clickTimeout = setTimeout(() => {
           if (!body.classList.contains('draw-mode')) {
@@ -318,7 +326,14 @@ textarea {
     ed.style.height = ed.scrollHeight + 'px';
   }
 
-  ed.addEventListener('input', () => { updateUI(); localStorage.setItem('notes-content', ed.value); });
+  let saveTimeout;
+  ed.addEventListener('input', () => { 
+    updateUI(); 
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      localStorage.setItem('notes-content', ed.value); 
+    }, 300);
+  });
 
   window.addEventListener('load', () => {
     var sc = localStorage.getItem('notes-content');
